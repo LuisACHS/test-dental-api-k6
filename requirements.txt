@@ -1,0 +1,26 @@
+# Dependencias de runtime.
+#
+# Politica (ver README): rangos por minor aqui, y un requirements.lock.txt
+# congelado con `pip freeze` que es lo que consume el Dockerfile cuando existe.
+#
+# Deliberadamente NO se usan:
+#   - fastapi[standard]  -> arrastra jinja2, email-validator, fastapi-cli, etc.
+#   - python-jose        -> sin releases desde 2021, depende de `ecdsa` con CVEs
+#   - passlib            -> sin mantencion desde 2020, se rompe con bcrypt >= 4.1
+#   - prometheus-fastapi-instrumentator -> 40 lineas propias dan control de labels
+
+fastapi>=0.115,<0.121
+uvicorn[standard]>=0.30,<0.40
+
+sqlalchemy[asyncio]>=2.0.30,<2.1
+asyncpg>=0.29,<1.0
+alembic>=1.13,<2.0
+
+pydantic>=2.7,<3.0
+pydantic-settings>=2.3,<3.0
+
+pyjwt>=2.8,<3.0
+bcrypt>=4.1,<6.0
+python-multipart>=0.0.9,<1.0
+
+prometheus-client>=0.20,<1.0

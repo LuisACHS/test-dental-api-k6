@@ -1,0 +1,2 @@
+# Todo en LF: el contenedor es Linux y un entrypoint.sh con CRLF no arranca.
+* text=auto eol=lf

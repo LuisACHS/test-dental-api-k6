@@ -1,0 +1,81 @@
+# ---------------------------------------------------------------------------
+# Variante para Dokploy. El docker-compose.yml sigue siendo el de desarrollo
+# local; este se diferencia en:
+#   - sin container_name: Dokploy nombra los contenedores por proyecto.
+#   - sin bind mounts del codigo: la imagen ya trae la app; cada deploy clona
+#     y reconstruye.
+#   - sin puertos publicados: la API se expone por la pestaña Domains
+#     (Traefik) y la base queda solo en la red interna.
+#   - el .env lo escribe Dokploy desde la pestaña Environment.
+# ---------------------------------------------------------------------------
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dental}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?definir POSTGRES_PASSWORD en Environment}
+      POSTGRES_DB: ${POSTGRES_DB:-dental}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dental} -d ${POSTGRES_DB:-dental}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  #  Misma imagen con el caos encendido (perillas en .env.chaos), comparte base.
+  api-chaos:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+      - .env.chaos
+    environment:
+      POSTGRES_HOST: db
+      RUN_MIGRATIONS: "false"
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  pgdata:

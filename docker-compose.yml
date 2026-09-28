@@ -1,0 +1,90 @@
+name: dental-booking
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: dental-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dental}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dental}
+      POSTGRES_DB: ${POSTGRES_DB:-dental}
+    ports:
+      # Expuesto para poder inspeccionar la base durante una corrida de carga.
+      - "${POSTGRES_PORT_HOST:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dental} -d ${POSTGRES_DB:-dental}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build: .
+    container_name: dental-api
+    env_file:
+      - .env
+    environment:
+      # Gana sobre .env: dentro de la red de compose la base se llama "db".
+      POSTGRES_HOST: db
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      # Montado para iterar sin rebuild. Con RELOAD=true ademas recarga solo.
+      - ./app:/srv/app/app
+      - ./migrations:/srv/app/migrations
+      - ./tests:/srv/app/tests
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  #  Segunda instancia, identica pero con el caos encendido de entrada, para
+  #  apuntarle k6 sin ensuciar la medicion limpia del 8000. Comparte la misma
+  #  base, asi que ve exactamente los mismos datos.
+  api-chaos:
+    build: .
+    container_name: dental-api-chaos
+    env_file:
+      - .env
+      #  Se aplica encima del anterior: aca viven las perillas del caos.
+      - .env.chaos
+    environment:
+      POSTGRES_HOST: db
+      #  Las migraciones ya las corrio la instancia limpia.
+      RUN_MIGRATIONS: "false"
+    ports:
+      - "${API_CHAOS_PORT:-8001}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      #  Espera a que la limpia termine de migrar.
+      api:
+        condition: service_healthy
+    volumes:
+      - ./app:/srv/app/app
+      - ./migrations:/srv/app/migrations
+      - ./tests:/srv/app/tests
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+volumes:
+  pgdata:
